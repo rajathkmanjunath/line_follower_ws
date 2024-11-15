@@ -19,6 +19,7 @@ private:
     ros::Subscriber trigger_sub_;  // Subscriber for the trigger topic
     bool line_follow_enabled_ = false;  // Flag to check if line following is enabled
     ros::Publisher state_pub_;  // Publisher for state messages
+    bool yellow_line_detected_ = false;  // Flag to track yellow line detection
 
     // HSV range for yellow detection
     int low_H = 5, low_S = 50, low_V = 100;
@@ -107,6 +108,7 @@ public:
             std_msgs::String state_msg;
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
+            yellow_line_detected_ = false;  // Reset yellow line detection flag
             return;  // Exit early if blue line is detected
         }
 
@@ -126,6 +128,13 @@ public:
         std_msgs::Float64 steer_msg;
 
         if (m.m00 > 0) {  // If yellow pixels are detected
+            if (!yellow_line_detected_) {
+                std_msgs::String state_msg;
+                state_msg.data = "line_detected";
+                state_pub_.publish(state_msg);
+                yellow_line_detected_ = true;  // Set yellow line detection flag
+            }
+
             // Calculate centroid (relative to ROI)
             double cx = m.m10 / m.m00;
             
