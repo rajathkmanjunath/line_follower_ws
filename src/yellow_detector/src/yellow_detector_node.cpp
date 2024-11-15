@@ -6,6 +6,7 @@
 #include <std_msgs/Float64.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Bool.h>  // Include for trigger message
+#include <queue>
 
 class YellowDetector {
 private:
@@ -25,8 +26,15 @@ private:
     int low_H = 5, low_S = 50, low_V = 100;
     int high_H = 25, high_S = 228, high_V = 200;
 
-    // Proportional control gain
-    const double Kp = 0.1;  // Adjust this gain for your system
+    // PID control gains
+    const double Kp = 0.1;  // Proportional gain
+    const double Ki = 0.01; // Integral gain
+    const double Kd = 0.05; // Derivative gain
+
+    double previous_error_ = 0.0;  // Previous error for derivative calculation
+    std::queue<double> error_queue_;  // Queue to store the last 30 errors
+    const size_t max_queue_size_ = 30;  // Maximum size of the error queue
+    double accumulated_error_ = 0.0;  // Running sum of the errors for integral calculation
 
     // Clamping function for C++11
     double clamp(double value, double min_value, double max_value) {
@@ -139,10 +147,24 @@ public:
             double cx = m.m10 / m.m00;
             
             // Calculate difference from center of ROI
-            double center_diff = cx - (422.0); // This needs to be tweaked to center the vehicle based on the camera deviation from the center of the car
-            
-            // Calculate steering angle using proportional control
-            double steering_angle = -Kp * center_diff;  // Negative sign to correct direction
+            double center_diff = cx - (width / 2.0);
+
+            // PID control calculations
+            double error = center_diff;
+
+            // Update the error queue and accumulated error
+            error_queue_.push(error);
+            accumulated_error_ += error;
+            if (error_queue_.size() > max_queue_size_) {
+                accumulated_error_ -= error_queue_.front();  // Subtract the oldest error
+                error_queue_.pop();  // Remove the oldest error if the queue is full
+            }
+
+            double derivative = error - previous_error_;  // Calculate the derivative of error
+            previous_error_ = error;  // Update previous error
+
+            // Calculate steering angle using PID control
+            double steering_angle = -(Kp * error + Ki * accumulated_error_ + Kd * derivative);
             
             // Clip the steering angle between -30 and 30 degrees
             steer_msg.data = clamp(steering_angle, -30.0, 30.0);
