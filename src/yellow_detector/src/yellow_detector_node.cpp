@@ -16,8 +16,8 @@ private:
     ros::Publisher velocity_pub_;
 
     // HSV range for yellow detection
-    int low_H = 7, low_S = 20, low_V =70;
-    int high_H = 22, high_S = 200, high_V = 220;
+    int low_H = 5, low_S = 50, low_V = 100;
+    int high_H = 25, high_S = 228, high_V = 200;
 
     // Proportional control gain
     const double Kp = 0.1;  // Adjust this gain for your system
