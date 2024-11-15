@@ -3,7 +3,9 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <opencv2/opencv.hpp>
-#include <std_msgs/Float64.h>  // Change to Float64 for steering angle
+#include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
+#include <std_msgs/Bool.h>  // Include for trigger message
 
 class YellowDetector {
 private:
@@ -14,6 +16,9 @@ private:
     image_transport::Publisher mask_pub_;
     ros::Publisher steer_pub_;  // Publisher for steering angle
     ros::Publisher velocity_pub_;
+    ros::Subscriber trigger_sub_;  // Subscriber for the trigger topic
+    bool line_follow_enabled_ = false;  // Flag to check if line following is enabled
+    ros::Publisher state_pub_;  // Publisher for state messages
 
     // HSV range for yellow detection
     int low_H = 5, low_S = 50, low_V = 100;
@@ -39,10 +44,27 @@ public:
         steer_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/steer_angle", 1);
         velocity_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/velocity_value", 1);
 
+        // Subscribe to the trigger topic
+        trigger_sub_ = nh_.subscribe("/trigger_linefollow", 1, 
+            &YellowDetector::triggerCallback, this);
+
+        // Publisher for state messages
+        state_pub_ = nh_.advertise<std_msgs::String>("/state", 1);
+
         ROS_INFO("Yellow detector node initialized");
     }
 
+    // Callback to handle trigger messages
+    void triggerCallback(const std_msgs::Bool::ConstPtr& msg) {
+        line_follow_enabled_ = msg->data;
+    }
+
+    // Callback to process incoming images
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
+        if (!line_follow_enabled_) {
+            return;  // Exit if line following is not enabled
+        }
+
         cv_bridge::CvImagePtr cv_ptr;
         try {
             cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -55,21 +77,9 @@ public:
         cv::Mat hsv_image;
         cv::cvtColor(cv_ptr->image, hsv_image, cv::COLOR_BGR2HSV);
 
-        // Create mask for yellow colors
-        cv::Mat yellow_mask;
-        cv::inRange(hsv_image, 
-                   cv::Scalar(low_H, low_S, low_V), 
-                   cv::Scalar(high_H, high_S, high_V), 
-                   yellow_mask);
-
-        // Apply morphological operations to reduce noise
-        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-        cv::erode(yellow_mask, yellow_mask, kernel);
-        cv::dilate(yellow_mask, yellow_mask, kernel);
-
         // Get image dimensions
-        int height = yellow_mask.rows;
-        int width = yellow_mask.cols;
+        int height = hsv_image.rows;
+        int width = hsv_image.cols;
 
         // Calculate ROI dimensions to consider the full width and bottom half
         int roi_y_start = height / 2; // Start at 50% of height
@@ -77,10 +87,42 @@ public:
 
         // Create ROI for full-width bottom portion
         cv::Rect roi(0, roi_y_start, width, roi_height);
-        cv::Mat bottom_half = yellow_mask(roi);
+        cv::Mat hsv_roi = hsv_image(roi);  // Crop the image to the ROI
+
+        // Detect horizontal blue line in the cropped ROI
+        cv::Mat blue_mask;
+        cv::inRange(hsv_roi, 
+                   cv::Scalar(100, 150, 0), 
+                   cv::Scalar(140, 255, 255), 
+                   blue_mask);
+
+        // Apply morphological operations to reduce noise
+        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+        cv::erode(blue_mask, blue_mask, kernel);
+        cv::dilate(blue_mask, blue_mask, kernel);
+
+        cv::Moments blue_m = cv::moments(blue_mask, true);
+
+        if (blue_m.m00 > 0) {  // If blue line is detected
+            std_msgs::String state_msg;
+            state_msg.data = "Intermediate_stop";
+            state_pub_.publish(state_msg);
+            return;  // Exit early if blue line is detected
+        }
+
+        // Detect yellow line in the cropped ROI
+        cv::Mat yellow_mask;
+        cv::inRange(hsv_roi, 
+                   cv::Scalar(low_H, low_S, low_V), 
+                   cv::Scalar(high_H, high_S, high_V), 
+                   yellow_mask);
+
+        // Apply morphological operations to reduce noise
+        cv::erode(yellow_mask, yellow_mask, kernel);
+        cv::dilate(yellow_mask, yellow_mask, kernel);
 
         // Calculate centroid of yellow pixels in ROI
-        cv::Moments m = cv::moments(bottom_half, true);
+        cv::Moments m = cv::moments(yellow_mask, true);
         std_msgs::Float64 steer_msg;
 
         if (m.m00 > 0) {  // If yellow pixels are detected
@@ -88,7 +130,7 @@ public:
             double cx = m.m10 / m.m00;
             
             // Calculate difference from center of ROI
-            double center_diff = cx - (422.0);
+            double center_diff = cx - (422.0); // This needs to be tweaked to center the vehicle based on the camera deviation from the center of the car
             
             // Calculate steering angle using proportional control
             double steering_angle = -Kp * center_diff;  // Negative sign to correct direction
@@ -114,9 +156,8 @@ public:
         cv::rectangle(mask, roi, cv::Scalar(255), -1);  // Fill ROI with white
         
         // Create final mask combining yellow detection and ROI
-        cv::Mat final_mask;
-        yellow_mask.copyTo(final_mask);
-        final_mask.setTo(0, mask == 0);  // Zero out everything outside ROI
+        cv::Mat final_mask = cv::Mat::zeros(result.size(), CV_8UC1);
+        yellow_mask.copyTo(final_mask(roi));  // Copy the yellow mask to the ROI in the final mask
 
         // Apply mask to original image
         result.copyTo(result, final_mask);
