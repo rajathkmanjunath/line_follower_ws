@@ -1,0 +1,9 @@
+<launch>
+    <!-- Launch RealSense camera -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="enable_depth" value="false" />
+    </include>
+
+    <!-- Launch yellow detector node -->
+    <node name="yellow_detector_node" pkg="yellow_detector" type="yellow_detector_node" output="screen" />
+</launch>
