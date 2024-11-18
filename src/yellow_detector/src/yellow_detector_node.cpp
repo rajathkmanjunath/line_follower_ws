@@ -23,13 +23,13 @@ private:
     bool yellow_line_detected_ = false;  // Flag to track yellow line detection
 
     // HSV range for yellow detection
-    int low_H = 5, low_S = 50, low_V = 100;
-    int high_H = 25, high_S = 228, high_V = 200;
+    int low_H = 10, low_S = 100, low_V = 100;
+    int high_H = 20, high_S = 255, high_V = 255;
 
     // PID control gains
     const double Kp = 0.1;  // Proportional gain
-    const double Ki = 0.003; // Integral gain
-    const double Kd = 0.01; // Derivative gain
+    const double Ki = 0.0003; // Integral gain
+    const double Kd = 0.03; // Derivative gain
 
     const double dt = 0.01; // Time step for PID control
 
@@ -205,7 +205,7 @@ public:
             double cx = m.m10 / m.m00;
             
             // Calculate difference from center of ROI
-            double center_diff = cx - (width / 2.0);
+            double center_diff = cx - 770.0;
 
             // PID control calculations
             double error = center_diff;
