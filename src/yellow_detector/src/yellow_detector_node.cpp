@@ -40,9 +40,31 @@ private:
 
     image_transport::Publisher blue_mask_pub_;  // New publisher for blue mask
 
+    // Parameters for blue line detection
+    const int MIN_CLUSTER_SIZE = 100;  // Minimum number of pixels in a cluster
+    const int REQUIRED_CONSECUTIVE_FRAMES = 5;  // Number of frames needed for temporal filtering
+    int blue_detection_counter_ = 0;  // Counter for consecutive blue line detections
+
     // Clamping function for C++11
     double clamp(double value, double min_value, double max_value) {
         return std::max(min_value, std::min(value, max_value));
+    }
+
+    // Function to check if pixels are clustered
+    bool checkClustering(const cv::Mat& mask) {
+        std::vector<std::vector<cv::Point>> contours;
+        std::vector<cv::Vec4i> hierarchy;
+        cv::findContours(mask.clone(), contours, hierarchy, 
+                        cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+        // Check each contour's area
+        for (const auto& contour : contours) {
+            double area = cv::contourArea(contour);
+            if (area >= MIN_CLUSTER_SIZE) {
+                return true;  // Found a cluster of sufficient size
+            }
+        }
+        return false;  // No clusters of sufficient size found
     }
 
 public:
@@ -78,7 +100,8 @@ public:
     // Callback to process incoming images
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
         if (!line_follow_enabled_) {
-            return;  // Exit if line following is not enabled
+            blue_detection_counter_ = 0;  // Reset counter when disabled
+            return;
         }
 
         cv_bridge::CvImagePtr cv_ptr;
@@ -121,22 +144,37 @@ public:
 
         // Create full-size blue mask for visualization
         cv::Mat full_blue_mask = cv::Mat::zeros(cv_ptr->image.size(), CV_8UC1);
-        blue_mask.copyTo(full_blue_mask(roi));  // Copy the blue mask to the ROI
-        // Publish blue mask at the end as well (even if no blue line detected)
+        blue_mask.copyTo(full_blue_mask(roi));
+
+        // Check for clustered blue line detection
+        bool blue_line_detected = false;
+        if (blue_m.m00 > 0) {  // If any blue pixels are detected
+            // Check if the detected pixels form a cluster
+            if (checkClustering(blue_mask)) {
+                blue_detection_counter_++;  // Increment counter
+                
+                // Check if we've had enough consecutive detections
+                if (blue_detection_counter_ >= REQUIRED_CONSECUTIVE_FRAMES) {
+                    blue_line_detected = true;
+                }
+            } else {
+                blue_detection_counter_ = 0;  // Reset counter if no clusters found
+            }
+        } else {
+            blue_detection_counter_ = 0;  // Reset counter if no blue pixels detected
+        }
+
+        // Publish blue mask for visualization
         sensor_msgs::ImagePtr blue_mask_msg = 
             cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
         blue_mask_pub_.publish(blue_mask_msg);
-        
-        if (blue_m.m00 > 0) {  // If blue line is detected
+
+        // Handle blue line detection
+        if (blue_line_detected) {
             std_msgs::String state_msg;
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
-
-            // Publish blue mask before returning
-            sensor_msgs::ImagePtr blue_mask_msg = 
-                cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
-            blue_mask_pub_.publish(blue_mask_msg);
             return;  // Exit early if blue line is detected
         }
 
