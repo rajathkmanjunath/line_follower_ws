@@ -28,8 +28,10 @@ private:
 
     // PID control gains
     const double Kp = 0.1;  // Proportional gain
-    const double Ki = 0.01; // Integral gain
-    const double Kd = 0.05; // Derivative gain
+    const double Ki = 0.003; // Integral gain
+    const double Kd = 0.01; // Derivative gain
+
+    const double dt = 0.01; // Time step for PID control
 
     double previous_error_ = 0.0;  // Previous error for derivative calculation
     std::queue<double> error_queue_;  // Queue to store the last 30 errors
@@ -106,8 +108,8 @@ public:
         // Detect horizontal blue line in the cropped ROI
         cv::Mat blue_mask;
         cv::inRange(hsv_roi, 
-                   cv::Scalar(110, 150, 0), 
-                   cv::Scalar(120, 255, 255), 
+                   cv::Scalar(110, 25, 85), 
+                   cv::Scalar(120, 175, 145), 
                    blue_mask);
 
         // Apply morphological operations to reduce noise
@@ -178,7 +180,7 @@ public:
             previous_error_ = error;  // Update previous error
 
             // Calculate steering angle using PID control
-            double steering_angle = -(Kp * error + Ki * accumulated_error_ + Kd * derivative);
+            double steering_angle = -(Kp * error + Ki * accumulated_error_ * dt + Kd * derivative);
             
             // Clip the steering angle between -30 and 30 degrees
             steer_msg.data = clamp(steering_angle, -30.0, 30.0);
