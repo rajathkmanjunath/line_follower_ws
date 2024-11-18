@@ -122,7 +122,11 @@ public:
         // Create full-size blue mask for visualization
         cv::Mat full_blue_mask = cv::Mat::zeros(cv_ptr->image.size(), CV_8UC1);
         blue_mask.copyTo(full_blue_mask(roi));  // Copy the blue mask to the ROI
-
+        // Publish blue mask at the end as well (even if no blue line detected)
+        sensor_msgs::ImagePtr blue_mask_msg = 
+            cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
+        blue_mask_pub_.publish(blue_mask_msg);
+        
         if (blue_m.m00 > 0) {  // If blue line is detected
             std_msgs::String state_msg;
             state_msg.data = "Intermediate_stop";
@@ -220,11 +224,6 @@ public:
         sensor_msgs::ImagePtr mask_msg = 
             cv_bridge::CvImage(std_msgs::Header(), "mono8", final_mask).toImageMsg();
         mask_pub_.publish(mask_msg);
-
-        // Publish blue mask at the end as well (even if no blue line detected)
-        sensor_msgs::ImagePtr blue_mask_msg = 
-            cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
-        blue_mask_pub_.publish(blue_mask_msg);
     }
 };
 
