@@ -36,6 +36,8 @@ private:
     const size_t max_queue_size_ = 30;  // Maximum size of the error queue
     double accumulated_error_ = 0.0;  // Running sum of the errors for integral calculation
 
+    image_transport::Publisher blue_mask_pub_;  // New publisher for blue mask
+
     // Clamping function for C++11
     double clamp(double value, double min_value, double max_value) {
         return std::max(min_value, std::min(value, max_value));
@@ -59,6 +61,9 @@ public:
 
         // Publisher for state messages
         state_pub_ = nh_.advertise<std_msgs::String>("/state", 1);
+
+        // Add new publisher for blue mask
+        blue_mask_pub_ = it_.advertise("/yellow_detector/blue_mask", 1);
 
         ROS_INFO("Yellow detector node initialized");
     }
@@ -101,8 +106,8 @@ public:
         // Detect horizontal blue line in the cropped ROI
         cv::Mat blue_mask;
         cv::inRange(hsv_roi, 
-                   cv::Scalar(100, 150, 0), 
-                   cv::Scalar(140, 255, 255), 
+                   cv::Scalar(110, 150, 0), 
+                   cv::Scalar(120, 255, 255), 
                    blue_mask);
 
         // Apply morphological operations to reduce noise
@@ -112,11 +117,20 @@ public:
 
         cv::Moments blue_m = cv::moments(blue_mask, true);
 
+        // Create full-size blue mask for visualization
+        cv::Mat full_blue_mask = cv::Mat::zeros(cv_ptr->image.size(), CV_8UC1);
+        blue_mask.copyTo(full_blue_mask(roi));  // Copy the blue mask to the ROI
+
         if (blue_m.m00 > 0) {  // If blue line is detected
             std_msgs::String state_msg;
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
+
+            // Publish blue mask before returning
+            sensor_msgs::ImagePtr blue_mask_msg = 
+                cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
+            blue_mask_pub_.publish(blue_mask_msg);
             return;  // Exit early if blue line is detected
         }
 
@@ -204,6 +218,11 @@ public:
         sensor_msgs::ImagePtr mask_msg = 
             cv_bridge::CvImage(std_msgs::Header(), "mono8", final_mask).toImageMsg();
         mask_pub_.publish(mask_msg);
+
+        // Publish blue mask at the end as well (even if no blue line detected)
+        sensor_msgs::ImagePtr blue_mask_msg = 
+            cv_bridge::CvImage(std_msgs::Header(), "mono8", full_blue_mask).toImageMsg();
+        blue_mask_pub_.publish(blue_mask_msg);
     }
 };
 
