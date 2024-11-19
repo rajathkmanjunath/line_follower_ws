@@ -15,12 +15,15 @@ private:
     image_transport::Subscriber image_sub_;
     image_transport::Publisher image_pub_;
     image_transport::Publisher mask_pub_;
+    ros::Publisher latency_pub_;
     ros::Publisher steer_pub_;  // Publisher for steering angle
     ros::Publisher velocity_pub_;
     ros::Subscriber trigger_sub_;  // Subscriber for the trigger topic
     bool line_follow_enabled_ = false;  // Flag to check if line following is enabled
     ros::Publisher state_pub_;  // Publisher for state messages
     bool yellow_line_detected_ = false;  // Flag to track yellow line detection
+
+    double prev_time_ = 0.0;
 
     // HSV range for yellow detection
     int low_H = 5, low_S = 50, low_V = 100;
@@ -77,6 +80,7 @@ public:
         image_pub_ = it_.advertise("/yellow_detector/output", 1);
         mask_pub_ = it_.advertise("/yellow_detector/mask", 1);
         steer_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/steer_angle", 1);
+        latency_pub_ = nh_.advertise<std_msgs::Float64>("/camera_frame_latency", 1);
         velocity_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/velocity_value", 1);
 
         // Subscribe to the trigger topic
@@ -112,6 +116,14 @@ public:
             return;
         }
 
+        double cur_time = ros::Time::now().toSec();
+        if (prev_time_ > 0.1) {
+            std_msgs::Float64 latency;
+            latency.data = cur_time-prev_time_;
+            latency_pub_.publish(latency);
+        }
+
+        prev_time_ = cur_time;
         // Convert BGR to HSV
         cv::Mat hsv_image;
         cv::cvtColor(cv_ptr->image, hsv_image, cv::COLOR_BGR2HSV);
