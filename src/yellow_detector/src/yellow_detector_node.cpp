@@ -33,7 +33,7 @@ private:
     const double Kd = 0.03; // Derivative gain
 
     const double dt = 0.01; // Time step for PID control
-    static const double stop_trigger_wait_time_ = 1.0;
+    const double stop_trigger_wait_time_ = 1.0;
 
     double previous_error_ = 0.0;  // Previous error for derivative calculation
     std::queue<double> error_queue_;  // Queue to store the last 30 errors
@@ -101,8 +101,7 @@ public:
 
     // Callback to process incoming images
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
-        double cur_time_ = ros::Time::now().toSec();
-        if (!line_follow_enabled_ && cur_time_ > prev_stop_trigger_ + stop_trigger_wait_time_) {
+        if (!line_follow_enabled_) {
             blue_detection_counter_ = 0;  // Reset counter when disabled
             return;
         }
@@ -178,7 +177,7 @@ public:
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
-             prev_stop_trigger_ = ros::Time::now().toSec();
+            ros::Duration(stop_trigger_wait_time_).sleep();
             return;  // Exit early if blue line is detected
         }
 
