@@ -18,6 +18,7 @@ private:
     ros::Publisher steer_pub_;  // Publisher for steering angle
     ros::Publisher velocity_pub_;
     ros::Subscriber trigger_sub_;  // Subscriber for the trigger topic
+    double prev_stop_trigger_;
     bool line_follow_enabled_ = false;  // Flag to check if line following is enabled
     ros::Publisher state_pub_;  // Publisher for state messages
     bool yellow_line_detected_ = false;  // Flag to track yellow line detection
@@ -32,6 +33,7 @@ private:
     const double Kd = 0.03; // Derivative gain
 
     const double dt = 0.01; // Time step for PID control
+    static const double stop_trigger_wait_time_ = 1.0;
 
     double previous_error_ = 0.0;  // Previous error for derivative calculation
     std::queue<double> error_queue_;  // Queue to store the last 30 errors
@@ -99,7 +101,8 @@ public:
 
     // Callback to process incoming images
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
-        if (!line_follow_enabled_) {
+        double cur_time_ = ros::Time::now().toSec();
+        if (!line_follow_enabled_ && cur_time_ > prev_stop_trigger_ + stop_trigger_wait_time_) {
             blue_detection_counter_ = 0;  // Reset counter when disabled
             return;
         }
@@ -175,7 +178,7 @@ public:
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
-            line_follow_enabled_ = false;
+             prev_stop_trigger_ = ros::Time::now().toSec();
             return;  // Exit early if blue line is detected
         }
 
