@@ -175,6 +175,7 @@ public:
             state_msg.data = "Intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
+            line_follow_enabled_ = false;
             return;  // Exit early if blue line is detected
         }
 
