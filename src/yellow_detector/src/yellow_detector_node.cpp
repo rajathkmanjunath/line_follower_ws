@@ -29,7 +29,7 @@ private:
 
     // PID control gains
     const double Kp = 0.1;  // Proportional gain
-    const double Ki = 0.0003; // Integral gain
+    const double Ki = 0.003; // Integral gain
     const double Kd = 0.03; // Derivative gain
 
     const double dt = 0.01; // Time step for PID control
@@ -82,7 +82,7 @@ public:
         image_pub_ = it_.advertise("/yellow_detector/output", 1);
         mask_pub_ = it_.advertise("/yellow_detector/mask", 1);
         steer_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/steer_angle", 1);
-        velocity_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/velocity_value", 1);
+        velocity_pub_ = nh_.advertise<std_msgs::Float64>("/mpc/velocity", 1);
 
         // Subscribe to the trigger topic
         trigger_sub_ = nh_.subscribe("/trigger_linefollow", 1, 
@@ -104,7 +104,7 @@ public:
 
     // Callback to process incoming images
     void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
-        if (!line_follow_enabled_ || ros::Time::now().toSec() - prev_time <= 1.0) {
+        if (!line_follow_enabled_ || ros::Time::now().toSec() - prev_time <= stop_trigger_wait_time_) {
             blue_detection_counter_ = 0;  // Reset counter when disabled
             prev_time = ros::Time::now().toSec();
             return;
@@ -181,7 +181,6 @@ public:
             state_msg.data = "intermediate_stop";
             state_pub_.publish(state_msg);
             yellow_line_detected_ = false;  // Reset yellow line detection flag
-            prev_stop_trigger_ = ros::Time::now().toSec();
             return;  // Exit early if blue line is detected
         }
 
