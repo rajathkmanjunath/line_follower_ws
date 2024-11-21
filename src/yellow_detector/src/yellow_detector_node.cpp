@@ -236,10 +236,33 @@ public:
             steer_msg.data = 0.0;  // No yellow pixels detected, go straight
         }
 
-        std_msgs::Float64 velocity_msg;
-        velocity_msg.data = 12.0;
+        // Add check for yellow in top corners
+        cv::Mat top_half = hsv_image(cv::Rect(0, 0, width, height/2));
+        
+        // Define left and right quarter regions
+        cv::Mat left_quarter = top_half(cv::Rect(0, 0, width/4, height/2));
+        cv::Mat right_quarter = top_half(cv::Rect(3*width/4, 0, width/4, height/2));
+        
+        // Create yellow masks for both quarters
+        cv::Mat left_yellow_mask, right_yellow_mask;
+        cv::inRange(left_quarter, 
+                   cv::Scalar(low_H, low_S, low_V), 
+                   cv::Scalar(high_H, high_S, high_V), 
+                   left_yellow_mask);
+        cv::inRange(right_quarter, 
+                   cv::Scalar(low_H, low_S, low_V), 
+                   cv::Scalar(high_H, high_S, high_V), 
+                   right_yellow_mask);
 
-        // Publish the steering angle
+        // Check if either quarter has yellow pixels
+        bool yellow_in_corners = (cv::countNonZero(left_yellow_mask) > 0) || 
+                               (cv::countNonZero(right_yellow_mask) > 0);
+
+        // Set velocity based on yellow detection in corners
+        std_msgs::Float64 velocity_msg;
+        velocity_msg.data = yellow_in_corners ? 5.0 : 12.0;
+
+        // Publish the steering angle and velocity
         steer_pub_.publish(steer_msg);
         velocity_pub_.publish(velocity_msg);
 
