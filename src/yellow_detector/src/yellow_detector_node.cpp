@@ -198,46 +198,57 @@ public:
         // Calculate centroid of yellow pixels in ROI
         cv::Moments m = cv::moments(yellow_mask, true);
         std_msgs::Float64 steer_msg;
+        std_msgs::Float64 velocity_msg;
 
         if (m.m00 > 0) {  // If yellow pixels are detected
-            if (!yellow_line_detected_) {
-                std_msgs::String state_msg;
-                state_msg.data = "line_detected";
-                state_pub_.publish(state_msg);
-                yellow_line_detected_ = true;  // Set yellow line detection flag
+            // Find contours in the yellow mask
+            std::vector<cv::Point> points;
+            for (int y = 0; y < yellow_mask.rows; y++) {
+                for (int x = 0; x < yellow_mask.cols; x++) {
+                    if (yellow_mask.at<uchar>(y, x) > 0) {
+                        points.push_back(cv::Point(x, y));
+                    }
+                }
             }
 
-            // Calculate centroid (relative to ROI)
-            double cx = m.m10 / m.m00;
-            
-            // Calculate difference from center of ROI
-            double center_diff = cx - 770.0;
+            // Fit line to the points
+            cv::Vec4f line;
+            if (points.size() > 0) {
+                cv::fitLine(points, line, cv::DIST_L2, 0, 0.01, 0.01);
+                double slope = std::abs(line[1] / line[0]); // dy/dx
+                double angle = std::atan(slope) * 180.0 / M_PI;
 
-            // PID control calculations
-            double error = center_diff;
+                if (angle > 45.0) {
+                    // Steep line detected
+                    velocity_msg.data = 5.0; // Reduce speed
+                    // Determine which side the line is tilting towards
+                    steer_msg.data = (line[0] > 0) ? 45.0 : -45.0;
+                } else {
+                    // Normal line following behavior
+                    double cx = m.m10 / m.m00;
+                    double center_diff = cx - 770.0;
+                    
+                    // PID calculations as before
+                    double error = center_diff;
+                    error_queue_.push(error);
+                    accumulated_error_ += error;
+                    if (error_queue_.size() > max_queue_size_) {
+                        accumulated_error_ -= error_queue_.front();
+                        error_queue_.pop();
+                    }
 
-            // Update the error queue and accumulated error
-            error_queue_.push(error);
-            accumulated_error_ += error;
-            if (error_queue_.size() > max_queue_size_) {
-                accumulated_error_ -= error_queue_.front();  // Subtract the oldest error
-                error_queue_.pop();  // Remove the oldest error if the queue is full
+                    double derivative = error - previous_error_;
+                    previous_error_ = error;
+
+                    double steering_angle = -(Kp * error + Ki * accumulated_error_ * dt + Kd * derivative);
+                    steer_msg.data = clamp(steering_angle, -30.0, 30.0);
+                    velocity_msg.data = 12.0;
+                }
             }
-
-            double derivative = error - previous_error_;  // Calculate the derivative of error
-            previous_error_ = error;  // Update previous error
-
-            // Calculate steering angle using PID control
-            double steering_angle = -(Kp * error + Ki * accumulated_error_ * dt + Kd * derivative);
-            
-            // Clip the steering angle between -30 and 30 degrees
-            steer_msg.data = clamp(steering_angle, -30.0, 30.0);
         } else {
-            steer_msg.data = 0.0;  // No yellow pixels detected, go straight
+            steer_msg.data = 0.0;
+            velocity_msg.data = 12.0;
         }
-
-        std_msgs::Float64 velocity_msg;
-        velocity_msg.data = 12.0;
 
         // Publish the steering angle
         steer_pub_.publish(steer_msg);
