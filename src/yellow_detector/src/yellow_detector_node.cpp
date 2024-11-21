@@ -201,30 +201,45 @@ public:
         std_msgs::Float64 velocity_msg;
 
         if (m.m00 > 0) {  // If yellow pixels are detected
-            // Find contours in the yellow mask
+            // Create a separate mask for the top half to check slope
+            int top_roi_height = height / 2;
+            cv::Rect top_roi(0, 0, width, top_roi_height);
+            cv::Mat top_hsv_roi = hsv_image(top_roi);
+            
+            cv::Mat top_yellow_mask;
+            cv::inRange(top_hsv_roi, 
+                       cv::Scalar(low_H, low_S, low_V), 
+                       cv::Scalar(high_H, high_S, high_V), 
+                       top_yellow_mask);
+
+            // Apply morphological operations to reduce noise
+            cv::erode(top_yellow_mask, top_yellow_mask, kernel);
+            cv::dilate(top_yellow_mask, top_yellow_mask, kernel);
+
+            // Find points in the top yellow mask
             std::vector<cv::Point> points;
-            for (int y = 0; y < yellow_mask.rows; y++) {
-                for (int x = 0; x < yellow_mask.cols; x++) {
-                    if (yellow_mask.at<uchar>(y, x) > 0) {
+            for (int y = 0; y < top_yellow_mask.rows; y++) {
+                for (int x = 0; x < top_yellow_mask.cols; x++) {
+                    if (top_yellow_mask.at<uchar>(y, x) > 0) {
                         points.push_back(cv::Point(x, y));
                     }
                 }
             }
 
-            // Fit line to the points
+            // Fit line to the points from top half
             cv::Vec4f line;
             if (points.size() > 0) {
                 cv::fitLine(points, line, cv::DIST_L2, 0, 0.01, 0.01);
                 double slope = std::abs(line[1] / line[0]); // dy/dx
                 double angle = std::atan(slope) * 180.0 / M_PI;
 
-                if (angle > 45.0) {
-                    // Steep line detected
+                if (angle < 45.0) {
+                    // Steep line detected in top half
                     velocity_msg.data = 5.0; // Reduce speed
                     // Determine which side the line is tilting towards
-                    steer_msg.data = (line[0] > 0) ? 45.0 : -45.0;
+                    steer_msg.data = (line[0] > 0) ? 70.0 : -70.0;
                 } else {
-                    // Normal line following behavior
+                    // Normal line following behavior using bottom half
                     double cx = m.m10 / m.m00;
                     double center_diff = cx - 770.0;
                     
