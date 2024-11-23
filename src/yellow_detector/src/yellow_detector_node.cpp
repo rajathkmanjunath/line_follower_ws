@@ -23,17 +23,16 @@ private:
     ros::Publisher state_pub_;  // Publisher for state messages
     bool yellow_line_detected_ = false;  // Flag to track yellow line detection
 
-    // HSV range for yellow detection
-    int low_H = 10, low_S = 100, low_V = 100;
-    int high_H = 20, high_S = 255, high_V = 255;
+    // HSV range for yellow detection - now as member variables without initialization
+    int low_H, low_S, low_V;
+    int high_H, high_S, high_V;
 
-    // PID control gains
-    const double Kp = 0.1;  // Proportional gain
-    const double Ki = 0.003; // Integral gain
-    const double Kd = 0.03; // Derivative gain
-
-    const double dt = 0.01; // Time step for PID control
-    const double stop_trigger_wait_time_ = 2.0;
+    // PID control gains - now as member variables without initialization
+    double Kp;  // Proportional gain
+    double Ki;  // Integral gain
+    double Kd;  // Derivative gain
+    double dt;  // Time step for PID control
+    double stop_trigger_wait_time_;
 
     double prev_time = 0.0;
 
@@ -45,9 +44,9 @@ private:
 
     image_transport::Publisher blue_mask_pub_;  // New publisher for blue mask
 
-    // Parameters for blue line detection
-    const int MIN_CLUSTER_SIZE = 100;  // Minimum number of pixels in a cluster
-    const int REQUIRED_CONSECUTIVE_FRAMES = 5;  // Number of frames needed for temporal filtering
+    // Parameters for blue line detection - now as member variables without initialization
+    int MIN_CLUSTER_SIZE;
+    int REQUIRED_CONSECUTIVE_FRAMES;
     int blue_detection_counter_ = 0;  // Counter for consecutive blue line detections
 
     // Clamping function for C++11
@@ -74,6 +73,28 @@ private:
 
 public:
     YellowDetector() : it_(nh_) {
+        // Get private node handle for parameters
+        ros::NodeHandle private_nh("~");
+
+        // Load HSV parameters
+        private_nh.param("hsv/low_H", low_H, 10);
+        private_nh.param("hsv/low_S", low_S, 100);
+        private_nh.param("hsv/low_V", low_V, 100);
+        private_nh.param("hsv/high_H", high_H, 20);
+        private_nh.param("hsv/high_S", high_S, 255);
+        private_nh.param("hsv/high_V", high_V, 255);
+
+        // Load PID parameters
+        private_nh.param("pid/Kp", Kp, 0.1);
+        private_nh.param("pid/Ki", Ki, 0.003);
+        private_nh.param("pid/Kd", Kd, 0.03);
+        private_nh.param("pid/dt", dt, 0.01);
+        private_nh.param("pid/stop_trigger_wait_time", stop_trigger_wait_time_, 2.0);
+
+        // Load other parameters
+        private_nh.param("detection/min_cluster_size", MIN_CLUSTER_SIZE, 100);
+        private_nh.param("detection/required_consecutive_frames", REQUIRED_CONSECUTIVE_FRAMES, 5);
+
         // Subscribe to RealSense color image
         image_sub_ = it_.subscribe("/camera/color/image_raw", 1, 
             &YellowDetector::imageCallback, this);

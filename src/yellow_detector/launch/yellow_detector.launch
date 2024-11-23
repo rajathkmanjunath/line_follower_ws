@@ -1,9 +1,17 @@
 <launch>
-    <!-- Launch RealSense camera -->
+    <!-- Launch RealSense Camera -->
     <include file="$(find realsense2_camera)/launch/rs_camera.launch">
-        <arg name="enable_depth" value="false" />
+        <arg name="align_depth" value="true"/>
+        <arg name="color_width" value="1280"/>
+        <arg name="color_height" value="720"/>
+        <arg name="color_fps" value="30"/>
     </include>
 
-    <!-- Launch yellow detector node -->
-    <node name="yellow_detector_node" pkg="yellow_detector" type="yellow_detector_node" output="screen" />
+    <!-- Load parameters from config file -->
+    <rosparam command="load" file="$(find yellow_detector)/config/detector_params.yaml" />
+
+    <!-- Launch the detector node -->
+    <node pkg="yellow_detector" type="yellow_detector_node" name="yellow_detector" output="screen">
+        <!-- Any additional node-specific parameters can go here -->
+    </node>
 </launch>
