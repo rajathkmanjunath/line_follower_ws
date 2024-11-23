@@ -49,6 +49,14 @@ private:
     int REQUIRED_CONSECUTIVE_FRAMES;
     int blue_detection_counter_ = 0;  // Counter for consecutive blue line detections
 
+    // New member variables for blue detection HSV range
+    int blue_low_H, blue_low_S, blue_low_V;
+    int blue_high_H, blue_high_S, blue_high_V;
+    
+    // New member variables for steering limits and center reference
+    double steering_limit_min_, steering_limit_max_;
+    double center_reference_;
+
     // Clamping function for C++11
     double clamp(double value, double min_value, double max_value) {
         return std::max(min_value, std::min(value, max_value));
@@ -94,6 +102,19 @@ public:
         // Load other parameters
         private_nh.param("detection/min_cluster_size", MIN_CLUSTER_SIZE, 100);
         private_nh.param("detection/required_consecutive_frames", REQUIRED_CONSECUTIVE_FRAMES, 5);
+
+        // Load blue HSV parameters
+        private_nh.param("blue_hsv/low_H", blue_low_H, 110);
+        private_nh.param("blue_hsv/low_S", blue_low_S, 25);
+        private_nh.param("blue_hsv/low_V", blue_low_V, 85);
+        private_nh.param("blue_hsv/high_H", blue_high_H, 120);
+        private_nh.param("blue_hsv/high_S", blue_high_S, 175);
+        private_nh.param("blue_hsv/high_V", blue_high_V, 145);
+
+        // Load steering limits and center reference
+        private_nh.param("control/steering_limit_min", steering_limit_min_, -30.0);
+        private_nh.param("control/steering_limit_max", steering_limit_max_, 30.0);
+        private_nh.param("control/center_reference", center_reference_, 770.0);
 
         // Subscribe to RealSense color image
         image_sub_ = it_.subscribe("/camera/color/image_raw", 1, 
@@ -158,8 +179,8 @@ public:
         // Detect horizontal blue line in the cropped ROI
         cv::Mat blue_mask;
         cv::inRange(hsv_roi, 
-                   cv::Scalar(110, 25, 85), 
-                   cv::Scalar(120, 175, 145), 
+                   cv::Scalar(blue_low_H, blue_low_S, blue_low_V), 
+                   cv::Scalar(blue_high_H, blue_high_S, blue_high_V), 
                    blue_mask);
 
         // Apply morphological operations to reduce noise
@@ -232,7 +253,7 @@ public:
             double cx = m.m10 / m.m00;
             
             // Calculate difference from center of ROI
-            double center_diff = cx - 770.0;
+            double center_diff = cx - center_reference_;
 
             // PID control calculations
             double error = center_diff;
@@ -252,7 +273,7 @@ public:
             double steering_angle = -(Kp * error + Ki * accumulated_error_ * dt + Kd * derivative);
             
             // Clip the steering angle between -30 and 30 degrees
-            steer_msg.data = clamp(steering_angle, -30.0, 30.0);
+            steer_msg.data = clamp(steering_angle, steering_limit_min_, steering_limit_max_);
         } else {
             steer_msg.data = 0.0;  // No yellow pixels detected, go straight
         }

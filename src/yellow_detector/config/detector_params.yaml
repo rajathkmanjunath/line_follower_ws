@@ -1,4 +1,5 @@
-yellow_detector:
+yellow_detector_node:
+  # Yellow line HSV parameters
   hsv:
     low_H: 10
     low_S: 100
@@ -6,14 +7,31 @@ yellow_detector:
     high_H: 20
     high_S: 255
     high_V: 255
-  
+
+  # Blue line HSV parameters
+  blue_hsv:
+    low_H: 110
+    low_S: 25
+    low_V: 85
+    high_H: 120
+    high_S: 175
+    high_V: 145
+
+  # PID control parameters
   pid:
     Kp: 0.1
     Ki: 0.003
     Kd: 0.03
     dt: 0.01
     stop_trigger_wait_time: 2.0
-  
+
+  # Control parameters
+  control:
+    steering_limit_min: -30.0
+    steering_limit_max: 30.0
+    center_reference: 770.0
+
+  # Detection parameters
   detection:
     min_cluster_size: 100
-    required_consecutive_frames: 5 
+    required_consecutive_frames: 5
